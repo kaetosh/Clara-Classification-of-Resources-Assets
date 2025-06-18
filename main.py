@@ -1,21 +1,27 @@
-from cleantext import clean
-import re
-from string import punctuation
 import pandas as pd
-import numpy as np
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.model_selection import GridSearchCV
-from sklearn.naive_bayes import ComplementNB
-from sklearn.model_selection import train_test_split, RandomizedSearchCV
-from sklearn.metrics import confusion_matrix, classification_report
-from sklearn.pipeline import Pipeline
-import matplotlib.pyplot as plt
-import seaborn as sns
-from tqdm import tqdm
-import joblib
-from datetime import datetime
-from imblearn.pipeline import make_pipeline
-from sklearn.preprocessing import LabelEncoder
-from imblearn.over_sampling import SMOTE
-from imblearn.over_sampling import RandomOverSampler
-from collections import Counter
+from complementNB import AssetClassifier
+from configuration import NAME_FILE_DATA, RANDOM_SAMPLING
+
+print('Загрузка данных...', end='\r')
+df_all = pd.read_excel(NAME_FILE_DATA).dropna(subset=['name', 'group'])
+print("Данные выгружены!")
+
+if RANDOM_SAMPLING:
+    df = df_all.sample(n=5000, random_state=42)
+else:
+    df = df_all.loc[:,:]
+
+# Инициализация и обучение
+classifier = AssetClassifier(max_features=20000)
+classifier.train(df, text_column='name', target_column='group')
+
+
+# Сохранение и загрузка модели
+model_path, encoder_path = classifier.save_model("my_model")
+loaded_classifier = AssetClassifier.load_model(model_path, encoder_path)
+
+# Предсказание на новых данных
+new_data = pd.DataFrame({'name': ["Компьютер Dell", "Офисное кресло"]})
+predictions = loaded_classifier.predict(new_data, return_proba=True)
+print(predictions)
+predictions.to_excel('1.xlsx')
