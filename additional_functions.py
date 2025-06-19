@@ -1,3 +1,11 @@
+from pathlib import Path
+from typing import Optional
+import tkinter as tk
+from tkinter import filedialog
+import pandas as pd
+
+from custom_errors import MissingColumnsError, RowCountError, LoadFileError
+
 # import re
 # import joblib
 # import numpy as np
@@ -145,3 +153,64 @@
 
 #     def transform(self, X):
 #         return X.astype(str).apply(clean_text)
+
+def select_excel_file() -> Optional[Path]:
+    """
+    Открыть диалог выбора файла Excel (.xlsx) и вернуть выбранный путь.
+    Если пользователь отменил выбор, вернуть None.
+    """
+    root = tk.Tk()
+    root.withdraw()  # Скрыть основное окно
+
+    # Настройка диалога выбора файла
+    file_path = filedialog.askopenfilename(
+        title="Выберите файл Excel",
+        filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")]
+    )
+
+    root.destroy()  # Закрыть скрытое окно
+    root.quit()
+
+    return Path(file_path) if file_path else None
+
+def find_cls_model_files() -> list[Path]:
+    """
+    Ищет файлы .joblib, начинающиеся на 'cls_model' в текущей директории.
+
+    Возвращает:
+        list[Path]: Список путей к найденным файлам (объекты Path).
+    """
+    current_dir = Path.cwd()
+    return list(current_dir.glob("cls_model*.joblib"))
+
+
+
+def load_and_validate_excel(file_path: Path, min_rows: int) -> pd.DataFrame:
+    """
+    Загружает Excel-файл и проверяет:
+    1) Наличие столбцов 'name' и 'group'.
+    2) Достаточное количество строк (>= min_rows).
+
+    Параметры:
+        file_path (Path): Путь к файлу Excel.
+        min_rows (int): Минимально необходимое количество строк.
+
+    Возвращает:
+        pd.DataFrame: Если проверки пройдены.
+        Exception: Если проверки не пройдены или возникла ошибка.
+    """
+    try:
+        df = pd.read_excel(file_path)
+
+        # Проверка столбцов
+        required_columns = {'name', 'group'}
+        if not required_columns.issubset(df.columns):
+            raise MissingColumnsError(f"Ошибка: отсутствуют столбцы {required_columns - set(df.columns)}")
+
+        # Проверка количества строк
+        if len(df) < min_rows:
+            raise RowCountError(f"Ошибка: в файле только {len(df)} строк (требуется >= {min_rows})")
+        return df
+
+    except Exception as e:
+        raise LoadFileError(f"Ошибка загрузки файла: {e}")

@@ -51,6 +51,7 @@ class AssetClassifier:
         self.n_jobs = n_jobs
         self.label_encoder = LabelEncoder()
         self.model = None
+        self.name_model = None
         self.stop_words_russian = STOPWORDS_RU  # Пример стоп-слов
 
     def _is_sample_suitable(self,
@@ -127,7 +128,8 @@ class AssetClassifier:
         """
         try:
             # Подготовка данных
-            df = df.dropna()
+            df = df.dropna(['name', 'group'], how='any')
+            self.name_model = df['model'].iloc[0]
             X = df[text_column].astype(str)
             y = self.label_encoder.fit_transform(df[target_column])
 
@@ -173,7 +175,7 @@ class AssetClassifier:
                 n_iter=20,
                 cv=5,
                 n_jobs=self.n_jobs,
-                verbose=2,
+                verbose=0,
                 random_state=self.random_state,
                 scoring='f1_weighted'
             )
@@ -204,22 +206,22 @@ class AssetClassifier:
         classes = self.label_encoder.classes_
         cm = confusion_matrix(y_test_decoded, y_pred_decoded, labels=classes)
 
-        plt.figure(figsize=(14, 10))
-        sns.heatmap(
-            cm,
-            annot=True,
-            fmt='d',
-            cmap='Blues',
-            xticklabels=classes,
-            yticklabels=classes,
-            annot_kws={"size": 8}
-        )
-        plt.title('Confusion Matrix', pad=20)
-        plt.xlabel('Predicted', fontsize=12)
-        plt.ylabel('Actual', fontsize=12)
-        plt.xticks(rotation=45, ha='right')
-        plt.tight_layout()
-        plt.show()
+        # plt.figure(figsize=(14, 10))
+        # sns.heatmap(
+        #     cm,
+        #     annot=True,
+        #     fmt='d',
+        #     cmap='Blues',
+        #     xticklabels=classes,
+        #     yticklabels=classes,
+        #     annot_kws={"size": 8}
+        # )
+        # plt.title('Confusion Matrix', pad=20)
+        # plt.xlabel('Predicted', fontsize=12)
+        # plt.ylabel('Actual', fontsize=12)
+        # plt.xticks(rotation=45, ha='right')
+        # plt.tight_layout()
+        # plt.show()
 
         # Classification Report
         print("\nClassification Report:")
@@ -228,7 +230,7 @@ class AssetClassifier:
     def save_model(self, path_prefix=None):
         """Сохранение модели и кодировщика"""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        prefix = path_prefix or "asset_classifier"
+        prefix = path_prefix or self.name_model or "asset_classifier"
 
         model_filename = f"{prefix}_model_{timestamp}.joblib"
         encoder_filename = f"{prefix}_encoder_{timestamp}.joblib"

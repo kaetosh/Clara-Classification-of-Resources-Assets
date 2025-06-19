@@ -23,3 +23,4 @@ STOPWORDS_RU = {
 }
 NAME_FILE_DATA = 'train_data.xlsx'
 RANDOM_SAMPLING = True
+MIN_SAMPLES = 1000
