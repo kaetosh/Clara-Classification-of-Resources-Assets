@@ -1,17 +1,21 @@
 import pandas as pd
+import time
 from complementNB import AssetClassifier
 from configuration import NAME_FILE_DATA, RANDOM_SAMPLING, MIN_SAMPLES
 from joblib import parallel_backend
-
-from typing import List
+import asyncio
+from typing import List,Iterable, Set, Optional
 from pathlib import Path
 
+from textual import on, message
 from textual.app import App, ComposeResult
+from textual import work
+from textual.types import NoActiveAppError
 from textual.containers import Grid, ScrollableContainer, Container
 from textual.screen import ModalScreen
-from textual.widgets import Button, Footer, Header, Label, Markdown
-
-from additional_functions import (select_excel_file,
+from textual.widgets import Button, Footer, Header, Label, Markdown, DirectoryTree, Input, Static, LoadingIndicator
+from textual.reactive import reactive
+from additional_functions import (
                                   load_and_validate_excel,
                                   find_cls_model_files,
 
@@ -20,6 +24,7 @@ from additional_functions import (select_excel_file,
 from data_text import (NAME_APP,
                        NAME_OUTPUT_FILE,
                        SUB_TITLE_APP,
+                       MIN_ROWS,
                        TEXT_INTRODUCTION,
                        TEXT_GENERAL,
                        TEXT_ERR_FILES_EXCEL,
@@ -36,84 +41,74 @@ from data_text import (NAME_APP,
                        TEXT_ERR_NO_SELECT_SHEETS)
 
 
-class QuitScreen(ModalScreen):
-    """Screen with a dialog to quit."""
-
-    def compose(self) -> ComposeResult:
-        yield Grid(
-            Label("Укажите файл с данными для обучения", id="overview_window"),
-            Button("Обзор", variant="success", id="review"),
-            id="dialog",
-        )
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "quit":
-            self.app.exit()
-        else:
-            self.app.pop_screen()
-
-
 class ModalApp(App):
     """An app with a modal dialog."""
 
     CSS = """
     Screen {
         layout: vertical;
-    }
+        }
 
     #markdown-container {
         height: 6fr;
         overflow-y: auto;
         border: solid $accent;
         margin: 1;
-    }
+        }
 
     #dialog {
-    grid-size: 1;
-    grid-gutter: 1 1;
-    grid-rows: 1fr 3;
-    padding: 0 1;
-    width: 60;
-    height: 11;
-    border: thick $background 80%;
-    background: $surface;
-}
-    #overview_window {
-    column-span: 2;
-    height: 1fr;
-    width: 1fr;
-    content-align: center middle;
-}
-    #review {
-    column-span: 1;
-    height: 1fr;
-    width: 50%;
-    content-align: center middle;
-}
+        layout: grid;
+        grid-size: 2 2;
+        grid-columns: 2fr 1fr;
+        width: 90;
+        height: 12;
+        border: solid $accent;
+        padding: 1 1;
+        grid-gutter: 1 1;
+        }
+
+    DisplayingFolderTree {
+        width: 50%;
+        height: 70%;
+        border: solid $accent;
+        padding: 1 1;
+        }
+    #dir_tree {
+        height: 90%;
+        width: 60%;
+        }
+
+    #open-btn_dir_tree {
+        height: 10%;
+        width: 30%;
+        padding: 1 1;
+
+        }
+
+    FolderOverview {
+
+        align: center middle;
+        }
+
+    DisplayingFolderTree {
+        padding: 1 1;
+        align: center middle;
+        }
+
     #button-grid {
-        height: auto;
-        dock: bottom;
-        width: 100%;
-        padding: 1;
-        background: $surface;
-    }
-
-    QuitScreen {
-    align: center middle;
-}
-
-    Grid {
         grid-size: 2;
         grid-gutter: 1;
-    }
+        }
 
     Button {
         width: 100%;
-    }
+        }
+
     Container {
         height: 1fr;
-    }
+        }
     """
+
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -123,8 +118,8 @@ class ModalApp(App):
         )
         yield Container(
             Grid(
-                Button("Обучить модель", variant="success", id="train"),
-                Button("Классифицировать", variant="primary", id="classify"),
+                Button("Обучить модель", variant="default", id="train"),
+                Button("Классифицировать", variant="default", id="classify"),
                 id="button-grid"
             )
         )
@@ -134,15 +129,108 @@ class ModalApp(App):
         self.title = NAME_APP
         self.sub_title = SUB_TITLE_APP
 
-    def action_request_quit(self) -> None:
-        """Action to display the quit dialog."""
-        self.push_screen(QuitScreen())
-
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "train":
-            self.push_screen(QuitScreen())
+            self.push_screen(FolderOverview())
         elif event.button.id == "classify":
             print("Нажата кнопка Классифицировать")
+
+class FilteredDirectoryTree(DirectoryTree):
+    """DirectoryTree с фильтрацией: только Excel-файлы и скрытые файлы исключены"""
+
+    def filter_paths(self, paths: Iterable[Path]) -> Iterable[Path]:
+        filtered_paths = []
+        for path in paths:
+            # Исключаем скрытые файлы/папки (начинающиеся с точки)
+            if path.name.startswith("."):
+                continue
+
+            # Включаем все папки (чтобы можно было перемещаться по дереву)
+            if path.is_dir():
+                filtered_paths.append(path)
+            # Включаем только Excel-файлы
+            elif path.suffix.lower() in ('.xlsx', '.xls'):
+                filtered_paths.append(path)
+
+        return filtered_paths
+
+class LoaderIndicatorCustom(ModalScreen):
+    def compose(self) -> ComposeResult:
+        yield Static("Идет обработка данных")
+        yield LoadingIndicator()
+
+
+class FileSelectScreen(ModalScreen[Optional[Path]]):
+    def compose(self) -> ComposeResult:
+        yield Static("Выберите файл Excel (.xlsx):")
+        yield FilteredDirectoryTree("./", id="tree-view")
+        yield Button("Выбрать", id="select-btn", disabled=True)
+
+    selected_path: reactive[Optional[Path]] = reactive(None)
+
+    def on_mount(self):
+        # Отключаем кнопку пока файл не выбран
+        self.query_one("#select-btn").disabled = True
+
+    def on_directory_tree_file_selected(self, event: DirectoryTree.FileSelected):
+        """Обработчик выбора файла"""
+        if event.path.suffix in (".xlsx", ".xls"):
+            self.selected_path = event.path
+            self.query_one("#select-btn").disabled = False
+            self.query_one(Static).update(f"Выбран: {event.path.name}")
+        else:
+            self.notify("Выберите файл Excel (.xlsx)")
+
+    def on_button_pressed(self, event: Button.Pressed):
+        if event.button.id == "select-btn" and self.selected_path:
+            # self.dismiss(self.selected_path)
+
+            if self.selected_path and self.selected_path.suffix in (".xlsx", ".xls"):
+                self.app.push_screen(LoaderIndicatorCustom())
+                self.process_file(self.selected_path)  # Запускаем фоновую задачу
+
+    @work(thread=True)  # Запускаем в отдельном потоке, чтобы не блокировать UI
+    def process_file(self, file) -> None:
+        try:
+            print('Запущен process_file!!!!')
+
+            df = load_and_validate_excel(file, min_rows=MIN_ROWS)
+            print("Файл загружен, вызываю on_success...")
+            self.app.call_from_thread(self.on_success, df)  # Возвращаемся в основной поток
+            print("запустили call_from_thread...")
+        except Exception as e:
+            print("ОШИБКА!!!!...")
+            self.app.call_from_thread(self.on_error, str(e))  # Обработка ошибок
+
+    def on_success(self, df: pd.DataFrame) -> None:
+        print("on_success запущен...")
+        self.app.pop_screen()  # Закрываем индикатор
+        while len(self.app.screen_stack) > 1:
+            self.app.pop_screen()
+        self.app.notify("Файл успешно загружен!", title="Успех")
+
+    def on_error(self, error: str) -> None:
+        self.app.pop_screen()  # Закрываем индикатор
+        self.app.notify(f"Ошибка: {error}", title="Ошибка")
+
+class FolderOverview(ModalScreen):
+    def compose(self) -> ComposeResult:
+        yield Grid(
+            Static("Убедитесь, что excel файл расположен в папке вместе с приложением", id="overview_window"),
+            Button("ОК", variant="default", id="review"),
+            id="dialog",
+        )
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "review":
+            self.app.push_screen(FileSelectScreen())
+
+
+
+
+
+
+
 
 
 if __name__ == "__main__":

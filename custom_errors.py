@@ -14,3 +14,6 @@ class RowCountError(Exception):
 class LoadFileError(Exception):
     """Вызывается в прочих случаях ошибок загрузки файла."""
     pass
+class CancelingFileSelectionError(Exception):
+    """Вызывается в случае отмены выбора файла для обучения."""
+    pass

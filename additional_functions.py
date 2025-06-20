@@ -3,8 +3,9 @@ from typing import Optional
 import tkinter as tk
 from tkinter import filedialog
 import pandas as pd
+from textual import work
 
-from custom_errors import MissingColumnsError, RowCountError, LoadFileError
+from custom_errors import MissingColumnsError, RowCountError, LoadFileError, CancelingFileSelectionError
 
 # import re
 # import joblib
@@ -154,24 +155,21 @@ from custom_errors import MissingColumnsError, RowCountError, LoadFileError
 #     def transform(self, X):
 #         return X.astype(str).apply(clean_text)
 
-def select_excel_file() -> Optional[Path]:
-    """
-    Открыть диалог выбора файла Excel (.xlsx) и вернуть выбранный путь.
-    Если пользователь отменил выбор, вернуть None.
-    """
-    root = tk.Tk()
-    root.withdraw()  # Скрыть основное окно
+# @work(thread=True)
+# def select_excel_file_threadsafe() -> Optional[Path]:
+#     return select_excel_file()  # Tkinter в фоновом потоке
 
-    # Настройка диалога выбора файла
-    file_path = filedialog.askopenfilename(
-        title="Выберите файл Excel",
-        filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")]
-    )
+# def select_excel_file() -> Optional[Path]:
+#     """Выбор файла Excel без вызова destroy()/quit()."""
+#     root = tk.Tk()
+#     root.withdraw()
+#     root.wm_attributes('-topmost', 1)  # Диалог поверх других окон
 
-    root.destroy()  # Закрыть скрытое окно
-    root.quit()
-
-    return Path(file_path) if file_path else None
+#     file_path = filedialog.askopenfilename(
+#         title="Выберите файл Excel",
+#         filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")]
+#     )
+#     return Path(file_path) if file_path else None
 
 def find_cls_model_files() -> list[Path]:
     """
@@ -200,6 +198,9 @@ def load_and_validate_excel(file_path: Path, min_rows: int) -> pd.DataFrame:
         Exception: Если проверки не пройдены или возникла ошибка.
     """
     try:
+        if not file_path:
+            print('ОШИБКА if not file_path')
+            raise CancelingFileSelectionError("Отмена выбора файла для обучения")
         df = pd.read_excel(file_path)
 
         # Проверка столбцов
@@ -213,4 +214,5 @@ def load_and_validate_excel(file_path: Path, min_rows: int) -> pd.DataFrame:
         return df
 
     except Exception as e:
+        print(f"ОШИБКА в load_and_validate_excel: {e}")
         raise LoadFileError(f"Ошибка загрузки файла: {e}")
