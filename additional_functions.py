@@ -216,3 +216,32 @@ def load_and_validate_excel(file_path: Path, min_rows: int) -> pd.DataFrame:
     except Exception as e:
         print(f"ОШИБКА в load_and_validate_excel: {e}")
         raise LoadFileError(f"Ошибка загрузки файла: {e}")
+
+def load_and_validate_excel_test(file_path: Path) -> pd.DataFrame:
+    """
+    Загружает Excel-файл и проверяет:
+    1) Наличие столбцов 'name'.
+
+
+    Параметры:
+        file_path (Path): Путь к файлу Excel.
+
+    Возвращает:
+        pd.DataFrame: Если проверки пройдены.
+        Exception: Если проверки не пройдены или возникла ошибка.
+    """
+    try:
+        if not file_path:
+            print('ОШИБКА if not file_path')
+            raise CancelingFileSelectionError("Отмена выбора файла для обучения")
+        df = pd.read_excel(file_path)
+
+        # Проверка столбцов
+        required_columns = {'name'}
+        if not required_columns.issubset(df.columns):
+            raise MissingColumnsError(f"Ошибка: отсутствуют столбцы {required_columns - set(df.columns)}")
+        return df
+
+    except Exception as e:
+        print(f"ОШИБКА в load_and_validate_excel_test: {e}")
+        raise LoadFileError(f"Ошибка загрузки файла: {e}")

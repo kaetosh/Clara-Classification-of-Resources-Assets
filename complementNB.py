@@ -128,7 +128,7 @@ class AssetClassifier:
         """
         try:
             # Подготовка данных
-            df = df.dropna(['name', 'group'], how='any')
+            df = df.dropna(subset=['name', 'group'], how='any')
             self.name_model = df['model'].iloc[0]
             X = df[text_column].astype(str)
             y = self.label_encoder.fit_transform(df[target_column])
