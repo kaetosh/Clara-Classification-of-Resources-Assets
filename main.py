@@ -13,18 +13,18 @@ from screens import TrainingWarningModal, PredictWarningModal
 import os
 
 # --- Код установки шрифта ---
-def install_font():
-    font_path = Path(__file__).parent / "CascadiaCode.ttf"
-    if os.name == 'nt' and font_path.exists():
-        try:
-            ctypes.windll.gdi32.AddFontResourceW(str(font_path))
-            # Обновляем кэш шрифтов
-            ctypes.windll.user32.SendMessageW(0xFFFF, 0x001D, 0, 0)
-        except Exception as e:
-            print(f"Не удалось установить шрифт: {e}")
+# def install_font():
+#     font_path = Path(__file__).parent / "CascadiaCode.ttf"
+#     if os.name == 'nt' and font_path.exists():
+#         try:
+#             ctypes.windll.gdi32.AddFontResourceW(str(font_path))
+#             # Обновляем кэш шрифтов
+#             ctypes.windll.user32.SendMessageW(0xFFFF, 0x001D, 0, 0)
+#         except Exception as e:
+#             print(f"Не удалось установить шрифт: {e}")
 
 # Вызываем при старте приложения
-install_font()
+# install_font()
 # ---------------------------
 
 class ClaraApp(App):
