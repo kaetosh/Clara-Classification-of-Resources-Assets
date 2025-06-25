@@ -98,7 +98,7 @@ class FileSelectTrainModal(ModalScreen[Optional[Path]]):
 
 
             # НЕ ЗАБЫТЬ УБРАТЬ НА ПРОДЕ!!!!!!!!!
-            # df = df.sample(n=100, random_state=42)
+            df = df.sample(n=1000, random_state=42)
 
 
 
@@ -106,7 +106,7 @@ class FileSelectTrainModal(ModalScreen[Optional[Path]]):
             # Инициализация и обучение
             self.app.classifier = AssetClassifier(max_features=20000)
             self.app.report = self.app.classifier.train(df, text_column=REQUIRED_COLUMNS[0], target_column=REQUIRED_COLUMNS[1])
-            self.app.call_from_thread(self.on_success, df)  # Возвращаемся в основной поток
+            self.app.call_from_thread(self.on_success)  # Возвращаемся в основной поток
 
         except Exception as e:
             self.app.call_from_thread(self.on_error, str(e))  # Обработка ошибок

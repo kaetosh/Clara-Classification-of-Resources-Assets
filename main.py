@@ -1,6 +1,8 @@
 from pathlib import Path
 from typing import Optional
 
+# from textual.web import run
+
 from textual.app import App, ComposeResult
 from textual.containers import Grid, ScrollableContainer, Container
 from textual.widgets import Button, Footer, Header, Markdown
@@ -8,7 +10,22 @@ from textual.reactive import reactive
 
 from data_text import TEXT_INTRODUCTION, NAME_APP, SUB_TITLE_APP
 from screens import TrainingWarningModal, PredictWarningModal
+import os
 
+# --- Код установки шрифта ---
+def install_font():
+    font_path = Path(__file__).parent / "CascadiaCode.ttf"
+    if os.name == 'nt' and font_path.exists():
+        try:
+            ctypes.windll.gdi32.AddFontResourceW(str(font_path))
+            # Обновляем кэш шрифтов
+            ctypes.windll.user32.SendMessageW(0xFFFF, 0x001D, 0, 0)
+        except Exception as e:
+            print(f"Не удалось установить шрифт: {e}")
+
+# Вызываем при старте приложения
+install_font()
+# ---------------------------
 
 class ClaraApp(App):
     """An app with a modal dialog."""
@@ -304,3 +321,4 @@ class ClaraApp(App):
 if __name__ == "__main__":
     app = ClaraApp()
     app.run()
+

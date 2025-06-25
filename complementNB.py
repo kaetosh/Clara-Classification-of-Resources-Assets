@@ -56,8 +56,8 @@ class AssetClassifier:
         self.model = None
         self.stop_words_russian = STOPWORDS_RU  # Пример стоп-слов
 
-    @classmethod
-    def _is_sample_suitable(X,
+    def _is_sample_suitable(self,
+                            X,
                             y,
                             label_encoder=None,
                             min_samples=MIN_SAMPLES,
