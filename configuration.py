@@ -1,7 +1,11 @@
 RANDOM_STATE = 42
 N_JOBS = -1
 TEST_SIZE = 0.2
-MAX_FEATURES = 30000  # Увеличено для лучшего качества
+MAX_FEATURES = 30000
+RANDOM_SAMPLING = True
+MIN_SAMPLES = 1000
+REQUIRED_COLUMNS = ['Наименование', 'Группа']
+
 STOPWORDS_RU = {
     'и', 'в', 'во', 'не', 'что', 'он', 'на', 'я', 'с', 'со', 'как', 'а',
     'то', 'все', 'она', 'так', 'его', 'но', 'да', 'ты', 'к', 'у', 'же',
@@ -21,6 +25,3 @@ STOPWORDS_RU = {
     'перед', 'иногда', 'лучше', 'чуть', 'том', 'нельзя', 'такой', 'им',
     'более', 'всегда', 'конечно', 'всю', 'между'
 }
-NAME_FILE_DATA = 'train_data.xlsx'
-RANDOM_SAMPLING = True
-MIN_SAMPLES = 1000

@@ -17,3 +17,13 @@ class LoadFileError(Exception):
 class CancelingFileSelectionError(Exception):
     """Вызывается в случае отмены выбора файла для обучения."""
     pass
+class ClassRepresentationError(Exception):
+    """Ошибка, связанная с недостаточной представленностью классов."""
+    pass
+class ClassSampleSizeError(Exception):
+    """Ошибка, возникающая при слишком малом количестве примеров в одном или нескольких классах."""
+    pass
+class LoadModelError(Exception):
+    """Ошибка, возникающая при ошибках загрузки joblib."""
+    pass
+
