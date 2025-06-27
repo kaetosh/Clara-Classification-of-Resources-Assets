@@ -26,4 +26,7 @@ class ClassSampleSizeError(Exception):
 class LoadModelError(Exception):
     """Ошибка, возникающая при ошибках загрузки joblib."""
     pass
+class NoFilesToDeleteError(Exception):
+    """Кастомное исключение для случая, когда не найдены файлы для удаления."""
+    pass
 
