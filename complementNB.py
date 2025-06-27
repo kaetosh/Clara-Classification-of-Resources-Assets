@@ -216,7 +216,12 @@ class AssetClassifier:
         """Загрузка сохраненной модели"""
         try:
             loaded = joblib.load(model_path)
-        except (EOFError, pickle.UnpicklingError) as e:
+        except (EOFError,
+                pickle.UnpicklingError,
+                ModuleNotFoundError,
+                RuntimeError,
+                pickle.PicklingError,
+                MemoryError) as e:
             raise LoadModelError(f"Ошибка загрузки модели: файл повреждён или имеет неверный формат: {e}")
 
         classifier = cls()
@@ -283,7 +288,7 @@ class AssetClassifier:
             md_lines = []
 
             # Заголовок со средней вероятностью (если есть)
-            md_lines.append(f"**Средняя вероятность предсказания:** {avg_proba_str}\n")
+            md_lines.append(f"◎ **Средняя вероятность предсказания:** {avg_proba_str}\n")
 
             # Интерпретация результатов
             md_lines.append("**Интерпретация результатов**")
@@ -385,9 +390,9 @@ class AssetClassifier:
         lines = []
         lines.append("## Результаты обучения модели\n")
         lines.append("### Основные метрики")
-        lines.append(f"√ **Общая точность:** {accuracy_pct}%")
+        lines.append(f"◎ **Общая точность:** {accuracy_pct}%")
         if avg_correct_proba is not None:
-            lines.append(f"\n√ **Средняя вероятность верного предсказания:** {avg_correct_proba}%")
+            lines.append(f"\n◎ **Средняя вероятность верного предсказания:** {avg_correct_proba}%")
         lines.append("\n### Распределение по группам")
         lines.append("| Группа | Количество | Доля |")
         lines.append("|---|---|---|")
@@ -420,7 +425,7 @@ class AssetClassifier:
 
         # Рекомендации
         lines.append("### Рекомендации")
-        lines.append("√ Для улучшения точности:")
+        lines.append("⬓ Для улучшения точности:")
         lines.append("- Добавьте примеры для слабо представленных групп")
         lines.append("- Проверьте и уточните формулировки групп с частыми ошибками")
         lines.append("- Используйте множество обучающих примеров, оптимально от 10 тыс.")
