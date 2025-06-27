@@ -9,19 +9,35 @@ from typing import Optional
 import pandas as pd
 from datetime import datetime
 
-from textual import work
+from textual import work, on
 from textual.app import ComposeResult
 from textual.containers import Grid
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, Label, LoadingIndicator, Markdown
+from textual.widgets import Button, Input, Label, LoadingIndicator, Markdown, SelectionList
 
-from additional_functions import load_and_validate_excel, open_excel_file
+from additional_functions import load_and_validate_excel, open_excel_file, delete_files_by_type
 from widgets import ExcelDirectoryTree, JoblibDirectoryTree
 from configuration import MIN_SAMPLES
 from complementNB import AssetClassifier
 
 from configuration import REQUIRED_COLUMNS
 
+
+class FontWarningModal(ModalScreen):
+
+    def compose(self) -> ComposeResult:
+        yield Grid(Label("Для лучшего отображения установите шрифт из семейства Cascadia в настройках вашего терминала.\n\n"
+"Откройте настройки терминала (нажмите на левый верхний угол)\n"
+"Свойства -> Вкладка Шрифт'\n"
+"Выберите, например, 'Cascadia Code SemiBold'\n",
+                        id="label-font-warning-modal"
+                    ),
+                    Button("ОК", variant="success", id="button-font-warning-modal"),
+                    id='grid-font-warning-modal',
+        )
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss()
 
 class LoaderIndicatorCustom(ModalScreen):
     def compose(self) -> ComposeResult:
@@ -40,13 +56,15 @@ class TrainingWarningModal(ModalScreen):
     def compose(self) -> ComposeResult:
         yield Grid(Label("""Убедитесь, что excel файл с обучающей выборкой расположен в папке вместе с приложением. Убедитесь, что его содержимое соотвествует требованиям раздела -Обязательные условия-""",
                          id="label-training-warning-modal"),
-                   Button("Продолжить", variant="default", id="button-continue-training-warning-modal"),
-                   Button("Отмена", variant="default", id="button-cancel-training-warning-modal"),
+                   Button("✓ Продолжить", variant="success", id="button-continue-training-warning-modal"),
+                   Button("⨯ Отмена", variant="error", id="button-cancel-training-warning-modal"),
                    id='grid-training-warning-modal'
                          )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "button-continue-training-warning-modal":
+            while len(self.app.screen_stack) > 1:
+                self.app.pop_screen()
             self.app.push_screen(FileSelectTrainModal())
         elif event.button.id == "button-cancel-training-warning-modal":
             while len(self.app.screen_stack) > 1:
@@ -63,8 +81,8 @@ class FileSelectTrainModal(ModalScreen[Optional[Path]]):
         yield Grid(Label("Выберите файл Excel для обучения (.xlsx):",
                          id="label-file-select-train-modal"),
                    ExcelDirectoryTree("./", id="tree-file-select-train-modal"),
-                   Button("Выбрать", id="button-select-tree-file-select-train-modal", disabled=True),
-                   Button("Отмена", variant="default", id="button-cancel-tree-file-select-train-modal"),
+                   Button("✓ Выбрать", variant="success", id="button-select-tree-file-select-train-modal", disabled=True),
+                   Button("⨯ Отмена", variant="error", id="button-cancel-tree-file-select-train-modal"),
                    id='grid-file-select-train-modal'
                    )
 
@@ -72,6 +90,9 @@ class FileSelectTrainModal(ModalScreen[Optional[Path]]):
     def on_mount(self):
         # Отключаем кнопку пока файл не выбран
         self.query_one("#button-select-tree-file-select-train-modal").disabled = True
+        self.query_one("#tree-file-select-train-modal").ICON_FILE = '⬤ '
+        self.query_one("#tree-file-select-train-modal").ICON_NODE = '▼ '
+        self.query_one("#tree-file-select-train-modal").ICON_NODE_EXPANDED = '▶ '
 
     def on_directory_tree_file_selected(self, event: ExcelDirectoryTree.FileSelected):
         """Обработчик выбора файла"""
@@ -84,6 +105,7 @@ class FileSelectTrainModal(ModalScreen[Optional[Path]]):
 
     def on_button_pressed(self, event: Button.Pressed):
         if event.button.id == "button-select-tree-file-select-train-modal":
+            self.app.notify("Ожидайте завершение обучения. Процесс может занять несколько минут.", title="Статус")
             self.app.push_screen(LoaderIndicatorCustom())
             self.process_file(self.app.selected_path_file_train)  # Запускаем фоновую задачу
         elif event.button.id == "button-cancel-tree-file-select-train-modal":
@@ -114,13 +136,13 @@ class FileSelectTrainModal(ModalScreen[Optional[Path]]):
     def on_success(self) -> None:
         while len(self.app.screen_stack) > 1:
             self.app.pop_screen()
-        self.app.notify("Обучение завершено", title="Статус")
+        self.app.notify("Обучение завершено, сохраните модель, если результаты удовлетворительные.", title="Статус")
         self.app.push_screen(PrintReportModal(self.app.report))
 
 
     def on_error(self, error: str) -> None:
         self.app.pop_screen()  # Закрываем индикатор
-        self.app.notify(error, title="Ошибка")
+        self.app.notify(error, title="Ошибка", severity='error')
 
 
 class PrintReportModal(ModalScreen):
@@ -136,13 +158,16 @@ class PrintReportModal(ModalScreen):
         yield Grid(
             Label('Отчет по результатам обучения', id="label-print-report-modal"),
             Markdown(self.message, id='markdown-print-report-modal'),
-            Button("Сохранить модель", variant="default", id="button-save-print-report-modal"),
-            Button("Отмена", variant="default", id="button-cancel-print-report-modal"),
+            Grid(Button("✓ Сохранить модель", variant="success", id="button-save-print-report-modal"),
+                      Button("⨯ Отмена", variant="error", id="button-cancel-print-report-modal"),
+                      classes='grid-buttons'),
             id='grid-print-report-modal'
         )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "button-save-print-report-modal":
+            self.app.notify("Дайте модели осмысленное название, чтобы позже легко её идентифицировать. Например: Классификатор запасов (розница 2024) или ОС + НМА для IT-компаний",
+                            title="Важно", severity='warning', timeout=10)
             self.app.push_screen(SetNameModelModal())
         elif event.button.id == "button-cancel-print-report-modal":
             while len(self.app.screen_stack) > 1:
@@ -159,8 +184,8 @@ class SetNameModelModal(ModalScreen):
             Label("Модель успешно обучена. Введите имя модели и нажмите -Сохранить-",
                   id="label-set-name-model-modal"),
             Input(placeholder="Имя модели", type="text", id="input-set-name-model-modal"),
-            Button("Сохранить", variant="default", id="button-save-set-name-model-modal"),
-            Button("Отмена", variant="default", id="button-cancel-set-name-model-modal"),
+            Button("✓ Сохранить", variant="success", id="button-save-set-name-model-modal"),
+            Button("⨯ Отмена", variant="error", id="button-cancel-set-name-model-modal"),
             id="grid-set-name-model-modal",
         )
 
@@ -188,13 +213,15 @@ class PredictWarningModal(ModalScreen):
         yield Grid(
             Label("""Убедитесь, что excel файл с данными для классификации расположен в папке вместе с приложением. Убедитесь, что его содержимое соотвествует требованиям раздела -Получение предсказаний-. Убедитесь, что предварительно обученная модель сохранена и расположена в папке вместе с приложением.""",
                   id="label-predict-warning-modal"),
-            Button("Продолжить", variant="default", id="button-continue-predict-warning-modal"),
-            Button("Отмена", variant="default", id="button-cancel-predict-warning-modal"),
+            Button("✓ Продолжить", variant="success", id="button-continue-predict-warning-modal"),
+            Button("⨯ Отмена", variant="error", id="button-cancel-predict-warning-modal"),
             id="grid-predict-warning-modal",
         )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "button-continue-predict-warning-modal":
+            while len(self.app.screen_stack) > 1:
+                self.app.pop_screen()
             self.app.push_screen(FileSelectPredictModal())
         elif event.button.id == "button-cancel-predict-warning-modal":
             while len(self.app.screen_stack) > 1:
@@ -211,14 +238,17 @@ class FileSelectPredictModal(ModalScreen[Optional[Path]]):
         yield Grid(Label("Выберите файл Excel для классификации (.xlsx):",
                          id='label-file-select-predict-modal'),
                    ExcelDirectoryTree("./", id="tree-file-select-predict-modal"),
-                   Button("Выбрать", id="button-select-file-select-predict-modal", disabled=True),
-                   Button("Отмена", id="button-cancel-file-select-predict-modal"),
+                   Button("✓ Выбрать", variant="success", id="button-select-file-select-predict-modal", disabled=True),
+                   Button("⨯ Отмена", variant="error",id="button-cancel-file-select-predict-modal"),
                    id='grid-file-select-predict-modal'
                    )
 
     def on_mount(self):
         # Отключаем кнопку пока файл не выбран
         self.query_one("#button-select-file-select-predict-modal").disabled = True
+        self.query_one("#tree-file-select-predict-modal").ICON_FILE = '⬤ '
+        self.query_one("#tree-file-select-predict-modal").ICON_NODE = '▼ '
+        self.query_one("#tree-file-select-predict-modal").ICON_NODE_EXPANDED = '▶ '
 
     def on_directory_tree_file_selected(self, event: ExcelDirectoryTree.FileSelected):
         """Обработчик выбора файла"""
@@ -231,6 +261,8 @@ class FileSelectPredictModal(ModalScreen[Optional[Path]]):
 
     def on_button_pressed(self, event: Button.Pressed):
         if event.button.id == "button-select-file-select-predict-modal":
+            while len(self.app.screen_stack) > 1:
+                self.app.pop_screen()
             self.app.push_screen(FileSelectModelModal())
         elif event.button.id == "button-cancel-file-select-predict-modal":
             while len(self.app.screen_stack) > 1:
@@ -246,14 +278,17 @@ class FileSelectModelModal(ModalScreen[Optional[Path]]):
         yield Grid(Label("Выберите файл модели для классификации (.joblib):",
                          id='label-file-select-model-modal'),
                    JoblibDirectoryTree("./", id="tree-file-select-model-modal"),
-                   Button("Выбрать", id="button-select-file-select-model-modal", disabled=True),
-                   Button("Отмена", id="button-cancel-file-select-model-modal"),
+                   Button("✓ Выбрать", variant="success", id="button-select-file-select-model-modal", disabled=True),
+                   Button("⨯ Отмена", variant="error", id="button-cancel-file-select-model-modal"),
                    id='grid-file-select-model-modal'
                    )
 
     def on_mount(self):
         # Отключаем кнопку пока файл не выбран
         self.query_one("#button-select-file-select-model-modal").disabled = True
+        self.query_one("#tree-file-select-model-modal").ICON_FILE = '⬤ '
+        self.query_one("#tree-file-select-model-modal").ICON_NODE = '▼ '
+        self.query_one("#tree-file-select-model-modal").ICON_NODE_EXPANDED = '▶ '
 
     def on_directory_tree_file_selected(self, event: JoblibDirectoryTree.FileSelected):
         """Обработчик выбора файла"""
@@ -296,7 +331,7 @@ class FileSelectModelModal(ModalScreen[Optional[Path]]):
     def on_error(self, error: str) -> None:
         while len(self.app.screen_stack) > 1:
             self.app.pop_screen()
-        self.app.notify(f"Ошибка: {error}", title="Ошибка")
+        self.app.notify(error, title="Ошибка", severity='error')
 
 
 class PrintPredictModal(ModalScreen):
@@ -314,8 +349,9 @@ class PrintPredictModal(ModalScreen):
         yield Grid(
             Label('Отчет по результатам классификации (отображено не более 100 первых строк)', id="label-print-predict-modal"),
             Markdown(self.message, id='markdown-print-predict-modal'),
-            Button("Открыть результаты классификации", variant="default", id="button-open-print-predict-modal"),
-            Button("Отмена", variant="default", id="button-cancel-print-predict-modal"),
+            Grid(Button("✓ Открыть результаты классификации", variant="success", id="button-open-print-predict-modal"),
+                 Button("⨯ Отмена", variant="error", id="button-cancel-print-predict-modal"),
+                 classes='grid-buttons'),
             id='grid-print-predict-modal'
         )
 
@@ -328,3 +364,51 @@ class PrintPredictModal(ModalScreen):
         elif event.button.id == "button-cancel-print-predict-modal":
             while len(self.app.screen_stack) > 1:
                 self.app.pop_screen()
+
+class ClearDirModal(ModalScreen[Optional[Path]]):
+    """
+    Окно с выбором типа файлов (.xlsx или .joblib) для удаления из текущей директории. Кнопки Очистить и Отмена.
+    """
+    def compose(self) -> ComposeResult:
+        yield Grid(Label("Выберите файлы для удаления из текущей папки:",
+                         id="label-clear-dir-modal"),
+                   SelectionList(("модели", 1, True), ("файлы Excel", 0),),
+                   Button("✓ Очистить", variant="success", id="button-clear-dir-modal"),
+                   Button("⨯ Отмена", variant="error", id="button-cancel-clear-dir-modal"),
+                   id='grid-clear-dir-modal'
+                   )
+    @on(SelectionList.SelectedChanged)
+    def handle_select_sheet(self):
+        self.app.selected_files_for_clear = self.query_one(SelectionList).selected
+        print('ВЫБРАНО', self.app.selected_files_for_clear)
+        if not self.app.selected_files_for_clear:
+            self.query_one('#button-clear-dir-modal').disabled = True
+        else:
+            self.query_one('#button-clear-dir-modal').disabled = False
+
+    def on_button_pressed(self, event: Button.Pressed):
+        if event.button.id == "button-clear-dir-modal":
+            self.app.notify("Ожидайте очистку папки.", title="Статус")
+            self.app.push_screen(LoaderIndicatorCustom())
+            self.process_file(self.app.selected_files_for_clear)  # Запускаем фоновую задачу
+        elif event.button.id == "button-cancel-clear-dir-modal":
+            while len(self.app.screen_stack) > 1:
+                self.app.pop_screen()
+
+    @work(thread=True)  # Запускаем в отдельном потоке, чтобы не блокировать UI
+    def process_file(self, files_for_clear) -> None:
+        try:
+            delete_files_by_type(files_for_clear)
+            self.app.call_from_thread(self.on_success)  # Возвращаемся в основной поток
+        except Exception as e:
+            self.app.call_from_thread(self.on_error, str(e))  # Обработка ошибок
+
+    def on_success(self) -> None:
+        self.app.notify("Папка очищена", title="Статус")
+        while len(self.app.screen_stack) > 1:
+            self.app.pop_screen()
+
+    def on_error(self, error: str) -> None:
+        while len(self.app.screen_stack) > 1:
+            self.app.pop_screen()
+        self.app.notify(error, title="Ошибка", severity='error')
