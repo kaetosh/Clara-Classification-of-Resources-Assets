@@ -5,7 +5,23 @@ import sys
 import os
 import numpy as np
 
-from custom_errors import MissingColumnsError, RowCountError, LoadFileError, CancelingFileSelectionError
+
+from typing import List
+
+
+from custom_errors import MissingColumnsError, RowCountError, LoadFileError, CancelingFileSelectionError, NoFilesToDeleteError
+
+
+
+
+def check_font() -> bool:
+        """Упрощенная проверка шрифта без зависимостей"""
+        try:
+            from matplotlib import font_manager
+            return "Cascadia Code" in {f.name for f in font_manager.fontManager.ttflist}
+        except:
+            # Если проверка невозможна, предполагаем что шрифта нет
+            return False
 
 
 
@@ -104,3 +120,55 @@ def open_excel_file(path: Path):
         # Linux и другие: пытаемся открыть через xdg-open
         # (Excel на Linux обычно не установлен, но можно попытаться)
         subprocess.run(["xdg-open", file_path])
+
+
+
+
+def delete_files_by_type(file_types: List[int]) -> None:
+    """
+    Удаляет файлы в текущей папке по указанным типам.
+    Вызывает NoFilesToDeleteError, если файлы не найдены.
+
+    Параметры:
+        file_types: Список чисел, где:
+            [0] - удалить все .xlsx файлы
+            [1] - удалить все .joblib файлы
+            [0, 1] - удалить оба типа файлов
+
+    Исключения:
+        ValueError: Если передан недопустимый тип файла
+        NoFilesToDeleteError: Если не найдены файлы для удаления
+        PermissionError: Если нет прав на удаление файлов
+        OSError: При других ошибках файловой системы
+    """
+    valid_inputs = [[0], [1], [0, 1]]
+    if file_types not in valid_inputs:
+        raise ValueError(f"Недопустимый список типов. Допустимые значения: {valid_inputs}")
+
+    extensions = []
+    if 0 in file_types:
+        extensions.append('.xlsx')
+    if 1 in file_types:
+        extensions.append('.joblib')
+
+    files_found = False
+
+    try:
+        for filename in os.listdir('.'):
+            if any(filename.endswith(ext) for ext in extensions):
+                files_found = True
+                try:
+                    os.remove(filename)
+                    print(f"Удалён файл: {filename}")
+                except PermissionError as e:
+                    raise PermissionError(f"Нет прав на удаление файла {filename}") from e
+                except OSError as e:
+                    raise OSError(f"Ошибка при удалении файла {filename}") from e
+
+        if not files_found:
+            raise NoFilesToDeleteError("Не найдено файлов для удаления с указанными расширениями")
+
+    except OSError as e:
+        raise OSError(f"Ошибка при чтении содержимого папки") from e
+
+
