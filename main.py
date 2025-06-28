@@ -10,9 +10,6 @@ from data_text import TEXT_INTRODUCTION, NAME_APP, SUB_TITLE_APP
 from screens import TrainingWarningModal, PredictWarningModal, FontWarningModal, ClearDirModal
 from additional_functions import check_font
 
-
-
-
 import os
 import sys
 import ctypes
@@ -76,10 +73,6 @@ def unload_font_temp(font_path: str) -> bool:
     except Exception as e:
         print(f"Ошибка выгрузки шрифта: {e}")
         return False
-
-
-
-
 
 
 class ClaraApp(App):
