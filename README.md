@@ -74,7 +74,7 @@ Clara — это приложение для автоматической кла
 
 1. Скопируйте репозиторий [https://github.com/kaetosh/ExcelAggregator-v2.git](https://github.com/kaetosh/ClsTextual.git)
 2. Установите необходимые библиотеки ```pip install -r requirements.txt```
-3. Сформируйте exe-файл для удобного использования приложения ```pyinstaller --onefile --windowed --add-data "CascadiaCode.ttf;." main.py```.
+3. Сформируйте exe-файл для удобного использования приложения ```pyinstaller --onefile --additional-hooks-dir=. --add-data "CascadiaCode.ttf;." main.py```.
 4. Запустите exe-файл main.exe из папки dist
 ---
 

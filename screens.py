@@ -116,15 +116,7 @@ class FileSelectTrainModal(ModalScreen[Optional[Path]]):
     def process_file(self, file) -> None:
         try:
             df = load_and_validate_excel(file, required_columns=set(REQUIRED_COLUMNS), min_rows=MIN_SAMPLES)
-
-
-
-            # НЕ ЗАБЫТЬ УБРАТЬ НА ПРОДЕ!!!!!!!!!
-            # df = df.sample(n=1000, random_state=42)
-
-
-
-
+            # df = df.sample(n=1000, random_state=42) # для тестирования
             # Инициализация и обучение
             self.app.classifier = AssetClassifier(max_features=20000)
             self.app.report = self.app.classifier.train(df, text_column=REQUIRED_COLUMNS[0], target_column=REQUIRED_COLUMNS[1])
