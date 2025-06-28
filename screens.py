@@ -120,7 +120,7 @@ class FileSelectTrainModal(ModalScreen[Optional[Path]]):
 
 
             # НЕ ЗАБЫТЬ УБРАТЬ НА ПРОДЕ!!!!!!!!!
-            df = df.sample(n=1000, random_state=42)
+            # df = df.sample(n=1000, random_state=42)
 
 
 
@@ -349,7 +349,7 @@ class PrintPredictModal(ModalScreen):
         yield Grid(
             Label('Отчет по результатам классификации (отображено не более 100 первых строк)', id="label-print-predict-modal"),
             Markdown(self.message, id='markdown-print-predict-modal'),
-            Grid(Button("✓ Открыть результаты классификации", variant="success", id="button-open-print-predict-modal"),
+            Grid(Button("✓ Открыть файл", variant="success", id="button-open-print-predict-modal"),
                  Button("⨯ Отмена", variant="error", id="button-cancel-print-predict-modal"),
                  classes='grid-buttons'),
             id='grid-print-predict-modal'
@@ -372,7 +372,7 @@ class ClearDirModal(ModalScreen[Optional[Path]]):
     def compose(self) -> ComposeResult:
         yield Grid(Label("Выберите файлы для удаления из текущей папки:",
                          id="label-clear-dir-modal"),
-                   SelectionList(("модели", 1, True), ("файлы Excel", 0),),
+                   SelectionList(("файлы Excel (.xlsx)", 0, True), ("файлы модели (.joblib)", 1),),
                    Button("✓ Очистить", variant="success", id="button-clear-dir-modal"),
                    Button("⨯ Отмена", variant="error", id="button-cancel-clear-dir-modal"),
                    id='grid-clear-dir-modal'
