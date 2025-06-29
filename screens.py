@@ -382,6 +382,7 @@ class ClearDirModal(ModalScreen[Optional[Path]]):
         if event.button.id == "button-clear-dir-modal":
             self.app.notify("Ожидайте очистку папки.", title="Статус")
             self.app.push_screen(LoaderIndicatorCustom())
+            self.app.selected_files_for_clear = self.query_one(SelectionList).selected
             self.process_file(self.app.selected_files_for_clear)  # Запускаем фоновую задачу
         elif event.button.id == "button-cancel-clear-dir-modal":
             while len(self.app.screen_stack) > 1:

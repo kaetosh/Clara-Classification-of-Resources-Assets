@@ -4,6 +4,8 @@ import subprocess
 import sys
 import os
 import numpy as np
+import ctypes
+from ctypes import wintypes
 
 
 from typing import List
@@ -11,7 +13,64 @@ from typing import List
 
 from custom_errors import MissingColumnsError, RowCountError, LoadFileError, CancelingFileSelectionError, NoFilesToDeleteError
 
+# Явно определим недостающий тип PVOID
+if not hasattr(wintypes, 'PVOID'):
+    wintypes.PVOID = ctypes.c_void_p
 
+def resource_path(relative_path):
+    """Get absolute path to resource, works for dev and for PyInstaller"""
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+        print(f"Running in PyInstaller temp dir: {base_path}")  # Debug
+    except AttributeError:
+        base_path = os.path.abspath(".")
+        print(f"Running in dev mode, base path: {base_path}")  # Debug
+
+    full_path = os.path.join(base_path, relative_path)
+    normalized_path = os.path.normpath(full_path)
+    print(f"Resource final path: {normalized_path}")  # Debug
+    return normalized_path
+
+def load_font_temp(font_path: str) -> bool:
+    """Упрощенная версия загрузки шрифта"""
+    try:
+        font_path_abs = os.path.abspath(font_path)
+        if not os.path.exists(font_path_abs):
+            return False
+
+        # Простая версия без Ex-функции
+        result = ctypes.windll.gdi32.AddFontResourceW(font_path_abs)
+        return result > 0
+    except:
+        return False
+
+def unload_font_temp(font_path: str) -> bool:
+    """Выгружает временный шрифт"""
+    try:
+        FR_PRIVATE = 0x10
+        font_path_unicode = os.path.abspath(font_path)
+
+        RemoveFontResourceEx = ctypes.windll.gdi32.RemoveFontResourceExW
+        RemoveFontResourceEx.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.PVOID]
+        RemoveFontResourceEx.restype = wintypes.BOOL
+
+        if not os.path.exists(font_path_unicode):
+            print(f"Файл шрифта не найден: {font_path_unicode}")
+            return False
+
+        res = RemoveFontResourceEx(font_path_unicode, FR_PRIVATE, None)
+        if not res:
+            raise ctypes.WinError()
+
+        HWND_BROADCAST = 0xFFFF
+        WM_FONTCHANGE = 0x001D
+        ctypes.windll.user32.SendMessageW(HWND_BROADCAST, WM_FONTCHANGE, 0, 0)
+        return True
+
+    except Exception as e:
+        print(f"Ошибка выгрузки шрифта: {e}")
+        return False
 
 
 def check_font() -> bool:
@@ -120,8 +179,6 @@ def open_excel_file(path: Path):
         # Linux и другие: пытаемся открыть через xdg-open
         # (Excel на Linux обычно не установлен, но можно попытаться)
         subprocess.run(["xdg-open", file_path])
-
-
 
 
 def delete_files_by_type(file_types: List[int]) -> None:
