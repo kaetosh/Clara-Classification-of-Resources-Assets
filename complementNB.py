@@ -1,5 +1,4 @@
 from collections import Counter
-from matplotlib.backends.backend_pdf import PdfPages
 
 import pickle
 import pandas as pd
@@ -14,11 +13,9 @@ from sklearn.pipeline import make_pipeline
 from sklearn.model_selection import RandomizedSearchCV
 from sklearn.metrics import confusion_matrix
 from sklearn.base import BaseEstimator, TransformerMixin
-import matplotlib.pyplot as plt
-import seaborn as sns
 
 from configuration import STOPWORDS_RU, REQUIRED_COLUMNS, MIN_SAMPLES
-from additional_functions import confusion_matrix_to_markdown
+from additional_functions import confusion_matrix_to_markdown, check_claras_folder
 from custom_errors import RowCountError, ClassRepresentationError, ClassSampleSizeError, LoadModelError
 
 
@@ -62,7 +59,7 @@ class AssetClassifier:
                             label_encoder=None,
                             min_samples=MIN_SAMPLES,
                             min_classes=2,
-                            min_samples_per_class=5):
+                            min_samples_per_class=10):
         """
         Проверка, подходит ли выборка для обучения.
 
@@ -177,17 +174,12 @@ class AssetClassifier:
                 scoring='f1_weighted'
             )
 
-            print("\nНачало обучения модели...")
             search.fit(X_train, y_train)
             self.model = search.best_estimator_
 
             # Оценка модели
             report = self.generate_training_report(X_test, y_test)
 
-            # Сохранение модели
-            # self.save_model()
-
-            # return search.best_score_
             return report
 
         except Exception as e:
@@ -196,20 +188,23 @@ class AssetClassifier:
 
 
     def save_model(self, path_prefix=None):
-        """Сохранение модели и кодировщика"""
+        """Сохранение модели и кодировщика в папку, возвращаемую check_claras_folder"""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         prefix = path_prefix or "asset_classifier"
 
+        folder_path = check_claras_folder()
+
         model_filename = f"{prefix}_model_{timestamp}.joblib"
+        full_path = folder_path / model_filename
 
         model_components = {
-                'model': self.model,
-                'vectorizer': self.label_encoder
-            }
+            'model': self.model,
+            'vectorizer': self.label_encoder
+        }
 
-        joblib.dump(model_components, model_filename)
+        joblib.dump(model_components, full_path)
 
-        return model_filename
+        return str(full_path)
 
     @classmethod
     def load_model(cls, model_path):
@@ -288,7 +283,7 @@ class AssetClassifier:
             md_lines = []
 
             # Заголовок со средней вероятностью (если есть)
-            md_lines.append(f"◎ **Средняя вероятность предсказания:** {avg_proba_str}\n")
+            md_lines.append(f"**Средняя вероятность предсказания:** {avg_proba_str}\n")
 
             # Интерпретация результатов
             md_lines.append("**Интерпретация результатов**")
@@ -311,9 +306,19 @@ class AssetClassifier:
             markdown_table = "\n".join(md_lines)
 
             # Сохранение в файл (если нужно)
+            # claras_folder = check_claras_folder()
             if output_file:
-                if not output_file.endswith('.xlsx'):
-                    output_file += '.xlsx'
+                # # Добавляем расширение, если его нет
+                # if not output_file.endswith('.xlsx'):
+                #     output_file += '.xlsx'
+                
+                # Создаем полный путь к файлу
+                # output_path = claras_folder / output_file
+                
+                # Создаем папку, если она не существует
+                output_file.parent.mkdir(parents=True, exist_ok=True)
+                
+                # Сохраняем файл
                 result.to_excel(output_file, index=False)
                 print(f"Результаты сохранены в: {output_file}")
 
@@ -326,7 +331,7 @@ class AssetClassifier:
 
 
 
-    def generate_training_report(self, X_test, y_test, output_pdf_path=None):
+    def generate_training_report(self, X_test, y_test):
         """
         Формирует подробный отчет по итогам обучения модели с метриками, confusion matrix и classification report.
         При указании output_pdf_path сохраняет отчет и график в PDF.
@@ -334,7 +339,6 @@ class AssetClassifier:
         Args:
             X_test (pd.Series или список): Тестовые тексты.
             y_test (array-like): Истинные метки (числовые, закодированные LabelEncoder).
-            output_pdf_path (str, optional): Путь для сохранения PDF отчета.
 
         Returns:
             str: Отчет в формате markdown.
@@ -390,30 +394,36 @@ class AssetClassifier:
         lines = []
         lines.append("## Результаты обучения модели\n")
         lines.append("### Основные метрики")
-        lines.append(f"◎ **Общая точность:** {accuracy_pct}%")
+        lines.append(f"**Общая точность:** {accuracy_pct}%")
         if avg_correct_proba is not None:
-            lines.append(f"\n◎ **Средняя вероятность верного предсказания:** {avg_correct_proba}%")
+            lines.append(f"\n**Средняя вероятность верного предсказания:** {avg_correct_proba}%")
+        
         lines.append("\n### Распределение по группам")
-        lines.append("| Группа | Количество | Доля |")
-        lines.append("|---|---|---|")
+        
+        # Заголовок таблицы с новыми столбцами
+        lines.append("| Группа | Количество | Доля | Точность | Средняя вероятность верного предсказания |")
+        lines.append("|---|---|---|---|---|")
+        
+        total = len(y_test_decoded)
+        
         for group, count in group_counts.most_common():
             pct = int(round(count / total * 100))
-            lines.append(f"| {group} | {count} | {pct}% |")
-
-        lines.append("\n### Качество распознавания по группам")
-        for group, stats in group_report.items():
-            lines.append(f"1. **{group}**")
-            lines.append(f"   - Верно распознано: {stats['correct']} из {stats['total']} ({stats['accuracy_pct']}%)")
-            if stats['common_errors']:
-                error_strs = [f'"{err[0]}" ({err[1]} случая)' for err in stats['common_errors']]
-                lines.append(f"   - Типичные ошибки: путает с {', '.join(error_strs)}")
+            accuracy_group = group_report[group]['accuracy_pct'] if group in group_report else 0
+        
+            # Средняя вероятность верного предсказания по группе
+            if avg_correct_proba is not None and hasattr(self.model, 'predict_proba'):
+                # Индексы объектов этой группы
+                idxs = [i for i, val in enumerate(y_test_decoded) if val == group]
+                # Индексы классов для этой группы
+                class_idx = list(self.label_encoder.classes_).index(group)
+                # Вероятности для правильного класса для объектов группы
+                group_probas = [proba[i, class_idx] for i in idxs]
+                avg_group_proba = int(round(np.mean(group_probas) * 100)) if group_probas else 0
             else:
-                lines.append("   - Типичные ошибки: отсутствуют")
-            lines.append("")
+                avg_group_proba = "N/A"
+        
+            lines.append(f"| {group} | {count} | {pct}% | {accuracy_group}% | {avg_group_proba}% |")
 
-        # Classification report (текст)
-        # class_report_text = classification_report(y_test_decoded, y_pred_decoded, digits=2, zero_division=0)
-        # lines.append("### Classification Report\n```\n" + class_report_text + "\n```")
 
         # Confusion matrix
         classes = self.label_encoder.classes_
@@ -422,51 +432,25 @@ class AssetClassifier:
         md_table = confusion_matrix_to_markdown(cm, classes)
 
         lines.append("### Матрица ошибок\n\n" + md_table + "\n")
+        
+        lines.append("\n### Качество распознавания по группам")
+        for group, stats in group_report.items():
+            lines.append(f"1. **{group}**")
+            lines.append(f"   - Верно распознано: {stats['correct']} из {stats['total']} ({stats['accuracy_pct']}%)")
+            if stats['common_errors']:
+                error_strs = [f'"{err[0]}" ({err[1]})' for err in stats['common_errors']]
+                lines.append(f"   - Типичные ошибки: путает с {', '.join(error_strs)}")
+            else:
+                lines.append("   - Типичные ошибки: отсутствуют")
+            lines.append("")
 
         # Рекомендации
         lines.append("### Рекомендации")
-        lines.append("⬓ Для улучшения точности:")
+        lines.append("Для улучшения точности:")
         lines.append("- Добавьте примеры для слабо представленных групп")
         lines.append("- Проверьте и уточните формулировки групп с частыми ошибками")
         lines.append("- Используйте множество обучающих примеров, оптимально от 10 тыс.")
 
         report_text = "\n".join(lines)
-
-        # Если нужно сохранить в PDF
-        if output_pdf_path:
-            with PdfPages(output_pdf_path) as pdf:
-                # Страница 1: Текстовый отчет
-                fig_text = plt.figure(figsize=(8.27, 11.69))  # A4
-                plt.axis('off')
-                # Разбиваем текст на строки и выводим с переносом
-                wrapped_text = report_text.split('\n')
-                y_pos = 1.0
-                line_height = 0.025
-                for line in wrapped_text:
-                    plt.text(0.01, y_pos, line, fontsize=9, family='monospace', wrap=True)
-                    y_pos -= line_height
-                    if y_pos < 0:
-                        break
-                pdf.savefig(fig_text)
-                plt.close(fig_text)
-
-                # Страница 2: Confusion matrix heatmap
-                fig_cm = plt.figure(figsize=(12, 10))
-                sns.heatmap(
-                    cm,
-                    annot=True,
-                    fmt='d',
-                    cmap='Blues',
-                    xticklabels=classes,
-                    yticklabels=classes,
-                    annot_kws={"size": 10}
-                )
-                plt.title('Confusion Matrix', pad=20)
-                plt.xlabel('Предсказано')
-                plt.ylabel('Истинные метки')
-                plt.xticks(rotation=45, ha='right')
-                plt.tight_layout()
-                pdf.savefig(fig_cm)
-                plt.close(fig_cm)
 
         return report_text

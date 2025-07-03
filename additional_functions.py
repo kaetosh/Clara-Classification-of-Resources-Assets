@@ -1,17 +1,16 @@
 from pathlib import Path
 import pandas as pd
-import subprocess
 import sys
 import os
 import numpy as np
+from typing import List
+import subprocess
+import platform
 import ctypes
 from ctypes import wintypes
 
-
-from typing import List
-
-
 from custom_errors import MissingColumnsError, RowCountError, LoadFileError, CancelingFileSelectionError, NoFilesToDeleteError
+
 
 # Явно определим недостающий тип PVOID
 if not hasattr(wintypes, 'PVOID'):
@@ -82,19 +81,110 @@ def check_font() -> bool:
             # Если проверка невозможна, предполагаем что шрифта нет
             return False
 
+def check_claras_folder() -> Path:
+    documents_path = Path.cwd() / 'Claras_folder'
+    if not documents_path.exists():
+        documents_path.mkdir(parents=True, exist_ok=True)
+    return documents_path
+
+def get_short_path(path: str | Path = None, expand_user: bool = True) -> str:
+    """Возвращает сокращённый путь (относительный или абсолютный).
+    
+    Args:
+        path: Путь в виде строки или объекта Path.
+        expand_user: Заменять ли `~` на домашнюю директорию (по умолчанию True).
+    
+    Returns:
+        Строка с удобочитаемым путём.
+    """
+    if not path:
+        path = check_claras_folder()
+    else:    
+        path = Path(path).expanduser() if expand_user else Path(path)
+        path = path.resolve()
+    try:
+        return str(path.relative_to(Path.cwd()))
+    except ValueError:
+        # Возвращаем путь в виде строки (можно добавить замену домашней директории на ~)
+        home = Path.home()
+        try:
+            return "~/" + str(path.relative_to(home))
+        except ValueError:
+            return str(path)
+
+def open_folder_in_explorer(folder_path: Path):
+    folder_path = folder_path.resolve()
+    if not folder_path.is_dir():
+        raise ValueError(f"Путь {folder_path} не является директорией")
+
+    system = platform.system()
+    if system == "Windows":
+        subprocess.run(["explorer", str(folder_path)])
+    elif system == "Darwin":  # macOS
+        subprocess.run(["open", str(folder_path)])
+    else:  # Linux и другие
+        subprocess.run(["xdg-open", str(folder_path)])
 
 
 def confusion_matrix_to_markdown(cm: np.ndarray, classes: np.ndarray) -> str:
     """
-    Возвращает матрицу ошибок для markdown разметки.
+    Возвращает confusion matrix в markdown, показывая топ-10 классов по количеству истинных примеров,
+    остальные объединены в класс 'Прочие'.
+
+    Если классов 10 или меньше, выводит полную матрицу без 'Прочие'.
+
+    Args:
+        cm: квадратная матрица ошибок (numpy.ndarray)
+        classes: массив имён классов (numpy.ndarray или list)
+
+    Returns:
+        markdown-строка с таблицей
     """
-    header = "| Истина \\ Прогноз | " + " | ".join(classes) + " |\n"
-    separator = "|---" * (len(classes) + 1) + "|\n"
+    n_classes = len(classes)
+    support = cm.sum(axis=1)
+
+    if n_classes <= 10:
+        # Просто выводим полную матрицу без "Прочие"
+        classes_new = classes
+        cm_new = cm
+    else:
+        # Индексы топ-10 классов по поддержке
+        top10_idx = np.argsort(support)[::-1][:10]
+        other_idx = np.setdiff1d(np.arange(n_classes), top10_idx)
+
+        frequent_classes = classes[top10_idx]
+
+        size_new = 11  # 10 + 1 "Прочие"
+        cm_new = np.zeros((size_new, size_new), dtype=cm.dtype)
+
+        # Заполняем подматрицу топ-10
+        for i_new, i_old in enumerate(top10_idx):
+            for j_new, j_old in enumerate(top10_idx):
+                cm_new[i_new, j_new] = cm[i_old, j_old]
+
+        # Заполняем строки для "Прочие" (истинные примеры вне топ-10)
+        for j_new, j_old in enumerate(top10_idx):
+            cm_new[-1, j_new] = cm[other_idx, j_old].sum()
+
+        # Заполняем столбцы для "Прочие" (прогнозы вне топ-10)
+        for i_new, i_old in enumerate(top10_idx):
+            cm_new[i_new, -1] = cm[i_old, other_idx].sum()
+
+        # Элемент "Прочие" на пересечении редких классов
+        cm_new[-1, -1] = cm[np.ix_(other_idx, other_idx)].sum()
+
+        classes_new = np.append(frequent_classes, "Прочие")
+
+    # Формируем markdown
+    header = "| Истина \\ Прогноз | " + " | ".join(classes_new) + " |\n"
+    separator = "|---" * (len(classes_new) + 1) + "|\n"
     rows = ""
-    for i, class_name in enumerate(classes):
-        row = f"| {class_name} | " + " | ".join(str(x) for x in cm[i]) + " |\n"
+    for i, class_name in enumerate(classes_new):
+        row = f"| {class_name} | " + " | ".join(str(x) for x in cm_new[i]) + " |\n"
         rows += row
     return header + separator + rows
+
+
 
 
 def find_cls_model_files() -> list[Path]:
@@ -132,7 +222,6 @@ def load_and_validate_excel(
     """
     try:
         if not file_path:
-            print('ОШИБКА if not file_path')
             raise CancelingFileSelectionError("Отмена выбора файла")
 
         df = pd.read_excel(file_path)
@@ -168,29 +257,23 @@ def open_excel_file(path: Path):
 
     # Приводим путь к строке с абсолютным путем
     file_path = str(path.resolve())
-
-    if sys.platform == "win32":
-        # Windows: используем startfile
-        os.startfile(file_path)
-    elif sys.platform == "darwin":
-        # macOS: открываем через open
-        subprocess.run(["open", "-a", "Microsoft Excel", file_path])
-    else:
-        # Linux и другие: пытаемся открыть через xdg-open
-        # (Excel на Linux обычно не установлен, но можно попытаться)
-        subprocess.run(["xdg-open", file_path])
-
-
+    try:
+        if sys.platform == "win32":
+            # Windows: используем startfile
+            os.startfile(file_path)
+    except Exception:
+        raise LoadFileError("Не удалось открыть файл.")
+        
 def delete_files_by_type(file_types: List[int]) -> None:
     """
-    Удаляет файлы в текущей папке по указанным типам.
+    Удаляет файлы в папке Claras_folder по указанным типам.
     Вызывает NoFilesToDeleteError, если файлы не найдены.
 
     Параметры:
         file_types: Список чисел, где:
             [0] - удалить все .xlsx файлы
             [1] - удалить все .joblib файлы
-            [0, 1] - удалить оба типа файлов
+            [0, 1], [1, 0]- удалить оба типа файлов
 
     Исключения:
         ValueError: Если передан недопустимый тип файла
@@ -198,7 +281,7 @@ def delete_files_by_type(file_types: List[int]) -> None:
         PermissionError: Если нет прав на удаление файлов
         OSError: При других ошибках файловой системы
     """
-    valid_inputs = [[0], [1], [0, 1]]
+    valid_inputs = [[0], [1], [0, 1], [1, 0]]
     if file_types not in valid_inputs:
         raise ValueError(f"Недопустимый список типов. Допустимые значения: {valid_inputs}")
 
@@ -208,24 +291,27 @@ def delete_files_by_type(file_types: List[int]) -> None:
     if 1 in file_types:
         extensions.append('.joblib')
 
+    folder_path = check_claras_folder()
+
     files_found = False
 
     try:
-        for filename in os.listdir('.'):
+        for filename in os.listdir(folder_path):
             if any(filename.endswith(ext) for ext in extensions):
                 files_found = True
+                file_path = folder_path / filename
                 try:
-                    os.remove(filename)
-                    print(f"Удалён файл: {filename}")
+                    os.remove(file_path)
+                    print(f"Удалён файл: {file_path}")
                 except PermissionError as e:
-                    raise PermissionError(f"Нет прав на удаление файла {filename}") from e
+                    raise PermissionError(f"Нет прав на удаление файла {file_path}") from e
                 except OSError as e:
-                    raise OSError(f"Ошибка при удалении файла {filename}") from e
+                    raise OSError(f"Ошибка при удалении файла {file_path}") from e
 
         if not files_found:
             raise NoFilesToDeleteError("Не найдено файлов для удаления с указанными расширениями")
 
     except OSError as e:
-        raise OSError(f"Ошибка при чтении содержимого папки") from e
+        raise OSError(f"Ошибка при чтении содержимого папки {folder_path}") from e
 
 
