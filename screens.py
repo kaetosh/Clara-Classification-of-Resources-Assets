@@ -11,11 +11,11 @@ from datetime import datetime
 
 from textual import work, on
 from textual.app import ComposeResult
-from textual.containers import Grid
+from textual.containers import Grid, Horizontal, Vertical, Container
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, Label, LoadingIndicator, Markdown, SelectionList
+from textual.widgets import Button, Input, Label, LoadingIndicator, Markdown, SelectionList, Static, Switch
 
-from additional_functions import load_and_validate_excel, open_excel_file, delete_files_by_type, check_claras_folder, get_short_path
+from additional_functions import load_and_validate_excel, open_excel_file, delete_files_by_type, check_claras_folder, get_short_path, save_state, load_state
 from widgets import ExcelDirectoryTree, JoblibDirectoryTree
 from configuration import MIN_SAMPLES
 from complementNB import AssetClassifier
@@ -28,7 +28,8 @@ class FontWarningModal(ModalScreen):
         yield Grid(Label("Для лучшего отображения установите шрифт из семейства Cascadia в настройках вашего терминала.\n\n"
 "Откройте настройки терминала (нажмите на левый верхний угол)\n"
 "Свойства -> Вкладка Шрифт'\n"
-"Выберите, например, 'Cascadia Code SemiBold'\n",
+"Выберите, например, 'Cascadia Code SemiBold'\n"
+"Отключить напоминание при запуске можно в Настройках.\n",
                         id="label-font-warning-modal"
                     ),
                     Button("ОК", variant="success", id="button-font-warning-modal"),
@@ -127,7 +128,7 @@ class FileSelectTrainModal(ModalScreen[Optional[Path]]):
             df = load_and_validate_excel(file, required_columns=set(REQUIRED_COLUMNS), min_rows=MIN_SAMPLES)
             # df = df.sample(n=1000, random_state=42) # для тестирования
             # Инициализация и обучение
-            self.app.classifier = AssetClassifier(max_features=20000)
+            self.app.classifier = AssetClassifier()
             self.app.report = self.app.classifier.train(df, text_column=REQUIRED_COLUMNS[0], target_column=REQUIRED_COLUMNS[1])
             self.app.call_from_thread(self.on_success)  # Возвращаемся в основной поток
 
@@ -440,3 +441,30 @@ class ClearDirModal(ModalScreen[Optional[Path]]):
         while len(self.app.screen_stack) > 1:
             self.app.pop_screen()
         self.app.notify(error, title="Ошибка", severity='error', timeout=15)
+
+class SettingsModal(ModalScreen):
+    """
+    Окно с настройками:
+        - показывать напоминание про установку шрифта Cascadian
+    """
+    
+    def compose(self) -> ComposeResult:
+            yield Container(
+                Horizontal(
+                    Static("Напоминание про установку шрифта Cascadia при запуске:     ", id='static-settings-modal'),
+                    Switch(value=load_state(), id='switch-settings-modal'),
+                    id="horizontal-settings-modal",
+                    ),
+                Button("Закрыть", variant="success", id="button-settings-modal"),
+                id="container-settings-modal"
+            )
+    
+    def on_switch_changed(self, event: Switch.Changed) -> None:
+        save_state(event.switch.value)
+    
+    def on_button_pressed(self, event: Button.Pressed):
+        if event.button.id == "button-settings-modal":
+            while len(self.app.screen_stack) > 1:
+                self.app.pop_screen()
+
+   

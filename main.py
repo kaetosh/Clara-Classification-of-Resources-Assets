@@ -11,13 +11,15 @@ from data_text import TEXT_INTRODUCTION, NAME_APP, SUB_TITLE_APP
 from screens import (TrainingWarningModal,
                      PredictWarningModal,
                      ClearDirModal,
-                     FontWarningModal)
+                     FontWarningModal,
+                     SettingsModal)
 from additional_functions import (open_folder_in_explorer,
                                   check_claras_folder,
                                   check_font,
                                   resource_path,
                                   load_font_temp,
-                                  unload_font_temp)
+                                  unload_font_temp,
+                                  load_state)
 
 
 class ClaraApp(App):
@@ -52,7 +54,7 @@ class ClaraApp(App):
             grid-gutter: 1 0;
             grid-rows: 65% 35%;
             width: 65;
-            height: 12;
+            height: 14;
             border: solid $accent;
             background: $surface;
         }
@@ -244,7 +246,7 @@ class ClaraApp(App):
             offset: 21% 0;
             content-align: center middle;
         }
-
+        
     PrintPredictModal {
         align: center middle;
     }
@@ -275,11 +277,37 @@ class ClaraApp(App):
         height: 10%;
         align: center middle;
         }
+    
+    SettingsModal {
+        align: center middle;
+    }
+        #container-settings-modal {
+           width: 50; 
+           height: 15;
+           border: solid $accent;
+           background: $surface;
+        }
+        #horizontal-settings-modal {
+            align: center top;
+            width: auto;
+        }
+        #static-settings-modal {
+           width: 3fr;
+           
+           }
+        #switch-settings-modal {
+           width: 1fr;
+           }
+        #button-settings-modal {
+            width: 50%;
+            offset: 50% 0;
+            }
     """
 
     BINDINGS = [
         ("ctrl+o", "open_dir", "Открыть папку"),
-        ("ctrl+d", "clear_dir", "Очистить папку")
+        ("ctrl+d", "clear_dir", "Очистить папку"),
+        ("ctrl+s", "settings", "Настройки")
         ]
 
 
@@ -316,7 +344,7 @@ class ClaraApp(App):
                 else:
                     print("Failed to load font")
 
-        if not check_font():
+        if not check_font() and load_state():
             self.push_screen(FontWarningModal())
 
     def on_shutdown(self) -> None:
@@ -336,6 +364,9 @@ class ClaraApp(App):
     
     def action_open_dir(self) -> None:
         open_folder_in_explorer(check_claras_folder())
+    
+    def action_settings(self) -> None:
+        self.push_screen(SettingsModal())
 
 
 if __name__ == "__main__":

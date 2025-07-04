@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 import pandas as pd
 import sys
 import os
@@ -315,3 +316,17 @@ def delete_files_by_type(file_types: List[int]) -> None:
         raise OSError(f"Ошибка при чтении содержимого папки {folder_path}") from e
 
 
+
+
+SETTINGS_FILE = 'settings.json'
+
+def save_state(value: bool):
+    with open(SETTINGS_FILE, 'w') as f:
+        json.dump({'toggle_state': value}, f)
+
+def load_state() -> bool:
+    if not os.path.exists(SETTINGS_FILE):
+        return False  # Значение по умолчанию
+    
+    with open(SETTINGS_FILE, 'r') as f:
+        return json.load(f).get('toggle_state', False)
